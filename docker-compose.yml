@@ -1,0 +1,161 @@
+services:
+  # Authentication Service
+  auth-service:
+    build: ./auth-service
+    ports:
+      - "8081:8081"
+    environment:
+      - SERVER_PORT=8081
+      - DB_HOST=database
+      - DB_PORT=5432
+      - DB_NAME=appdb
+      - DB_USERNAME=postgres
+      - DB_PASSWORD=password
+      - DDL_AUTO=update
+      - JWT_SECRET=NTZhNDcyZTVkNDJhNDc2OTJkNzA3MjY4NzE1NjZkNDk0ZWIyNTQxNzYxNDc0NTZjNzA3MjY4NzE1NjZkNDk1OA==
+      - JWT_EXPIRATION=86400000
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@example.com}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-password123}
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://database:5432/appdb
+      - SPRING_DATASOURCE_USERNAME=postgres
+      - SPRING_DATASOURCE_PASSWORD=password
+    depends_on:
+      database:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8081/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - app-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
+  # Blog Service
+  blog-service:
+    build: ./blog-service
+    ports:
+      - "8082:8082"
+    environment:
+      - SERVER_PORT=8082
+      - DB_HOST=database
+      - DB_PORT=5432
+      - DB_NAME=appdb
+      - DB_USERNAME=postgres
+      - DB_PASSWORD=password
+      - DDL_AUTO=update
+      - JWT_SECRET=NTZhNDcyZTVkNDJhNDc2OTJkNzA3MjY4NzE1NjZkNDk0ZWIyNTQxNzYxNDc0NTZjNzA3MjY4NzE1NjZkNDk1OA==
+      - JWT_EXPIRATION=86400000
+      - SPRING_REDIS_HOST=blog-cache
+      - SPRING_REDIS_PORT=6379
+      - SPRING_REDIS_TIMEOUT=60000ms
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://database:5432/appdb
+      - SPRING_DATASOURCE_USERNAME=postgres
+      - SPRING_DATASOURCE_PASSWORD=password
+    depends_on:
+      database:
+        condition: service_healthy
+      blog-cache:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8082/actuator/health/liveness"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - app-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
+  # Frontend (nginx proxies API calls)
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        - REACT_APP_API_URL=/api
+    ports:
+      - "8080:80"
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      blog-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - app-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+
+  # Shared PostgreSQL Database
+  database:
+    build: ./database
+    container_name: database
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=appdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d appdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+
+  # Blog Cache
+  blog-cache:
+    build: ./blog-cache
+    ports:
+      - "6379:6379"
+    volumes:
+      - blog-cache-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 128M
+
+volumes:
+  db-data:
+  blog-cache-data:
+
+networks:
+  app-network:
+    driver: bridge

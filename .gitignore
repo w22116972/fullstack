@@ -1,0 +1,24 @@
+.env
+.DS_Store
+CLAUDE.md
+.github/
+
+# Java/Maven build outputs
+**/target/
+*.class
+*.jar
+*.war
+
+# IDE files
+.idea/
+*.iml
+.vscode/
+.settings/
+.project
+.classpath
+
+# Node modules (frontend)
+**/node_modules/
+
+# Logs
+*.log
