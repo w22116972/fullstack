@@ -7,13 +7,13 @@ interface ArticleFormData {
     title: string;
     content: string;
     tags: string;
-    publishStatus: 'DRAFT' | 'PUBLISHED';
+    publishStatus: 'draft' | 'published';
 }
 
 const ArticleForm: React.FC = () => {
     const { register, handleSubmit, setValue, formState: { errors } } = useForm<ArticleFormData>({
         defaultValues: {
-            publishStatus: 'DRAFT'
+            publishStatus: 'draft'
         }
     });
     const navigate = useNavigate();
@@ -30,7 +30,7 @@ const ArticleForm: React.FC = () => {
                 setValue('title', data.title);
                 setValue('content', data.content);
                 setValue('tags', data.tags);
-                setValue('publishStatus', data.publishStatus);
+                setValue('publishStatus', data.publishStatus.toLowerCase());
             }).catch(error => {
                 console.error("Failed to load article", error);
                 setError("Failed to load article details.");
@@ -112,7 +112,7 @@ const ArticleForm: React.FC = () => {
                         <label style={{ marginRight: '15px' }}>
                             <input
                                 type="radio"
-                                value="DRAFT"
+                                value="draft"
                                 {...register('publishStatus')}
                                 disabled={loading}
                             /> Draft
@@ -120,7 +120,7 @@ const ArticleForm: React.FC = () => {
                         <label>
                             <input
                                 type="radio"
-                                value="PUBLISHED"
+                                value="published"
                                 {...register('publishStatus')}
                                 disabled={loading}
                             /> Published

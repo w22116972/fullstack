@@ -7,7 +7,7 @@ export interface Article {
     title: string;
     content: string;
     tags: string;
-    publishStatus: 'DRAFT' | 'PUBLISHED';
+    publishStatus: 'draft' | 'published';
     authorEmail: string;
     createdAt: string;
     updatedAt: string;

@@ -10,12 +10,14 @@ import java.security.Key;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 import java.util.function.Function;
 
 /**
  * JWT utility for token generation, validation, and claim extraction.
  * 
  * This component handles all JWT operations for the auth-service.
+ * Token blacklisting for logout is handled by TokenCacheService.
  */
 @Component
 public class JwtUtil {
@@ -71,6 +73,7 @@ public class JwtUtil {
 
     /**
      * Generates a JWT token for the authenticated user.
+     * Includes a unique JWT ID (JTI) claim for token identification and revocation.
      */
     public String generateToken(UserDetails userDetails) {
         Map<String, Object> claims = new HashMap<>();
@@ -83,6 +86,9 @@ public class JwtUtil {
             }
             claims.put("role", role);
         }
+        // Add unique JWT ID (JTI) for token revocation and identification
+        String jti = UUID.randomUUID().toString();
+        claims.put("jti", jti);
         return generateToken(claims, userDetails);
     }
 
@@ -116,6 +122,21 @@ public class JwtUtil {
             return true;
         } catch (JwtException | IllegalArgumentException e) {
             return false;
+        }
+    }
+
+    /**
+     * Extracts the JWT ID (JTI) claim from a token.
+     * JTI is used for identifying and blacklisting individual tokens.
+     *
+     * @param token the JWT token
+     * @return the JTI value, or null if not present
+     */
+    public String extractJti(String token) {
+        try {
+            return extractClaim(token, claims -> claims.get("jti", String.class));
+        } catch (Exception e) {
+            return null;
         }
     }
 }

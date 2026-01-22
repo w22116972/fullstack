@@ -17,9 +17,12 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 
 /**
- * Spring Security configuration for authentication.
- * 
- * Configures password encoding, user details service, and authentication provider.
+ * SecurityConfig sets up Spring Security for the authentication service.
+ * <p>
+ * This configuration class defines beans for password encoding, user details retrieval,
+ * authentication management, and HTTP security rules. It ensures that authentication endpoints
+ * are publicly accessible, configures stateless session management for JWT-based authentication,
+ * and integrates with the application's user repository for user lookup.
  */
 @Configuration
 @EnableWebSecurity
@@ -29,7 +32,16 @@ public class SecurityConfig {
     private final UserRepository userRepository;
 
     /**
-     * Configure HTTP security to allow public access to auth endpoints.
+     * Configures HTTP security for the authentication service.
+     * <p>
+     * - Disables CSRF protection (since JWT is used and sessions are stateless).
+     * - Sets session management to stateless to support JWT authentication.
+     * - Allows public access to login, register, token validation, and actuator endpoints.
+     * - Requires authentication for all other endpoints.
+     *
+     * @param http the HttpSecurity object to configure
+     * @return the configured SecurityFilterChain bean
+     * @throws Exception if configuration fails
      */
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -45,7 +57,11 @@ public class SecurityConfig {
     }
 
     /**
-     * Password encoder using BCrypt algorithm.
+     * Defines the password encoder bean using the BCrypt algorithm.
+     * <p>
+     * BCrypt is a strong hashing algorithm recommended for storing user passwords securely.
+     *
+     * @return a PasswordEncoder bean
      */
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -53,8 +69,12 @@ public class SecurityConfig {
     }
 
     /**
-     * User details service for loading user by email.
-     * Spring Security auto-configures AuthenticationProvider using this and PasswordEncoder.
+     * Provides a UserDetailsService bean for loading users by email.
+     * <p>
+     * This service is used by Spring Security to retrieve user details during authentication.
+     * It looks up users in the UserRepository by email and throws an exception if not found.
+     *
+     * @return a UserDetailsService bean
      */
     @Bean
     public UserDetailsService userDetailsService() {
@@ -66,7 +86,14 @@ public class SecurityConfig {
     }
 
     /**
-     * Authentication manager for handling authentication requests.
+     * Provides an AuthenticationManager bean for handling authentication requests.
+     * <p>
+     * The AuthenticationManager is a central component in Spring Security that processes
+     * authentication attempts. It is auto-configured using the provided AuthenticationConfiguration.
+     *
+     * @param config the AuthenticationConfiguration bean
+     * @return the AuthenticationManager bean
+     * @throws Exception if retrieval fails
      */
     @Bean
     public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {

@@ -37,13 +37,16 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             FilterChain filterChain) throws ServletException, IOException {
 
         String token = extractToken(request);
+        log.info("JwtAuthFilter: {} {} - token present: {}", request.getMethod(), request.getRequestURI(), token != null);
 
         if (token != null && jwtUtil.validateToken(token)) {
             try {
                 String email = jwtUtil.extractUsername(token);
+                log.info("JwtAuthFilter: extracted email: {}", email);
 
                 if (email != null && SecurityContextHolder.getContext().getAuthentication() == null) {
                     User user = userRepository.findByEmail(email).orElse(null);
+                    log.info("JwtAuthFilter: user found: {}", user != null);
 
                     if (user != null) {
                         List<SimpleGrantedAuthority> authorities = List.of(
@@ -55,12 +58,14 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                         authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                         SecurityContextHolder.getContext().setAuthentication(authToken);
 
-                        log.debug("Authenticated user: {} with role: {}", email, user.getRole());
+                        log.info("JwtAuthFilter: Authenticated user: {} with role: {}", email, user.getRole());
                     }
                 }
             } catch (Exception e) {
-                log.error("Error processing JWT token: {}", e.getMessage());
+                log.error("JwtAuthFilter: Error processing JWT token: {}", e.getMessage());
             }
+        } else if (token != null) {
+            log.warn("JwtAuthFilter: Token validation failed for {} {}", request.getMethod(), request.getRequestURI());
         }
 
         filterChain.doFilter(request, response);

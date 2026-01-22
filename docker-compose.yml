@@ -16,11 +16,17 @@ services:
       - JWT_EXPIRATION=86400000
       - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@example.com}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-password123}
+      - REDIS_HOST=auth-cache
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
       - SPRING_DATASOURCE_URL=jdbc:postgresql://database:5432/appdb
       - SPRING_DATASOURCE_USERNAME=postgres
       - SPRING_DATASOURCE_PASSWORD=password
+      - CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8080
     depends_on:
       database:
+        condition: service_healthy
+      auth-cache:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:8081/actuator/health"]
@@ -52,16 +58,19 @@ services:
       - DDL_AUTO=update
       - JWT_SECRET=NTZhNDcyZTVkNDJhNDc2OTJkNzA3MjY4NzE1NjZkNDk0ZWIyNTQxNzYxNDc0NTZjNzA3MjY4NzE1NjZkNDk1OA==
       - JWT_EXPIRATION=86400000
-      - SPRING_REDIS_HOST=blog-cache
+      # Connect to shared auth-cache for JTI blacklist validation
+      - SPRING_REDIS_HOST=auth-cache
       - SPRING_REDIS_PORT=6379
+      - SPRING_REDIS_PASSWORD=${REDIS_PASSWORD:-}
       - SPRING_REDIS_TIMEOUT=60000ms
       - SPRING_DATASOURCE_URL=jdbc:postgresql://database:5432/appdb
       - SPRING_DATASOURCE_USERNAME=postgres
       - SPRING_DATASOURCE_PASSWORD=password
+      - CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8080
     depends_on:
       database:
         condition: service_healthy
-      blog-cache:
+      auth-cache:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:8082/actuator/health/liveness"]
@@ -131,13 +140,35 @@ services:
           cpus: '0.25'
           memory: 256M
 
-  # Blog Cache
+  # Blog Cache (for blog-service local caching only)
   blog-cache:
     build: ./blog-cache
     ports:
       - "6379:6379"
     volumes:
       - blog-cache-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 128M
+
+  # Auth Cache (shared for JWT JTI blacklist validation across microservices)
+  auth-cache:
+    build: ./auth-cache
+    ports:
+      - "6380:6379"
+    environment:
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s

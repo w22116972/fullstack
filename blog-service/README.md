@@ -16,11 +16,11 @@ Blog microservice providing article CRUD operations with caching and role-based 
 
 | Method | Endpoint | Description | Auth Required |
 |--------|----------|-------------|---------------|
-| GET | /articles | List articles (paginated) | Yes |
-| GET | /articles/{id} | Get article by ID | Yes |
-| POST | /articles | Create article | Yes |
-| PUT | /articles/{id} | Update article | Yes (owner/admin) |
-| DELETE | /articles/{id} | Delete article | Yes (owner/admin) |
+| GET | /articles | List articles (paginated), validates token JTI | Yes |
+| GET | /articles/{id} | Get article by ID, validates token JTI | Yes |
+| POST | /articles | Create article, validates token JTI | Yes |
+| PUT | /articles/{id} | Update article, validates token JTI | Yes (owner/admin) |
+| DELETE | /articles/{id} | Delete article, validates token JTI | Yes (owner/admin) |
 
 ### Query Parameters for GET /articles
 
@@ -94,9 +94,10 @@ LAZY_INIT=true DDL_AUTO=none CACHE_TYPE=none ./mvnw spring-boot:run
 | DB_USERNAME | postgres | Database username |
 | DB_PASSWORD | password | Database password |
 | JWT_SECRET | (default key) | JWT signing secret (must match auth-service) |
-| SPRING_REDIS_HOST | localhost | Redis host |
-| SPRING_REDIS_PORT | 6379 | Redis port |
-| CACHE_TYPE | redis | Cache type (redis/none) |
+| SPRING_REDIS_HOST | auth-cache | **Redis host for token JTI validation** (connect to auth-cache, not blog-cache) |
+| SPRING_REDIS_PORT | 6379 | Redis port for token validation |
+| SPRING_REDIS_PASSWORD | | Redis password for token validation |
+| CACHE_TYPE | redis | Cache type for articles (redis/none) |
 | RATE_LIMIT_API | 100 | Max API requests per window |
 | RATE_LIMIT_API_WINDOW | 60 | Rate limit window in seconds |
 | LAZY_INIT | false | Enable lazy initialization |
@@ -142,18 +143,25 @@ src/main/java/com/example/blog/
 
 ## Security Features
 
-- JWT token authentication
-- Role-based access control (USER, ADMIN)
-- Ownership-based authorization (users can only modify their own articles)
-- Rate limiting (100 requests per 60 seconds)
-- Input validation
+- **JWT Token Authentication**: Token validation with signature verification and JTI blacklist checking
+- **JTI Blacklist Validation**: Every request checks if token's JTI is blacklisted in auth-cache (ensures logged-out tokens are rejected)
+- **TokenValidationFilter**: Early-stage filter checks JTI blacklist before processing requests
+- **Role-Based Access Control (RBAC)**: USER and ADMIN roles with different permissions
+- **Ownership-Based Authorization**: Users can only modify their own articles unless they are admins
+- **Rate Limiting**: API rate limiting via Redis integration
+- **Input Validation**: Article data validation on create/update
 
 ## Caching
 
-Articles are cached in Redis with the following behavior:
+Articles are cached in Redis (blog-cache) with the following behavior:
 - `@Cacheable` on getArticle() - caches individual articles
 - `@CacheEvict` on deleteArticle() - removes from cache on delete
 - Cache TTL: 1 hour (configurable)
+
+Additionally, the service validates tokens against the **auth-cache** Redis instance:
+- Checks if token's JTI is in the blacklist (via TokenValidationFilter)
+- Ensures logged-out tokens are immediately rejected across all services
+- Redis connection to auth-cache is shared with auth-service for distributed token state
 
 Cache can be disabled by setting `CACHE_TYPE=none`.
 

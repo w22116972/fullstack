@@ -15,9 +15,11 @@ Authentication microservice providing user registration, login, and JWT token ma
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | /auth/login | Authenticate user and return JWT token |
+| POST | /auth/login | Authenticate user and return JWT token with JTI claim |
 | POST | /auth/register | Register new user account |
-| POST | /auth/validate | Validate JWT token |
+| POST | /auth/validate | Validate JWT token (checks signature and JTI blacklist) |
+| POST | /auth/logout | Logout and blacklist token JTI |
+| POST | /auth/refresh | Refresh access token using refresh token |
 
 ### Request/Response Examples
 
@@ -37,7 +39,25 @@ Response:
 }
 ```
 
-**Register**
+**Refresh Token**
+```bash
+curl -X POST http://localhost:8081/auth/refresh \
+  -H "Content-Type: application/json" \
+  -d '{"refreshToken": "eyJhbGciOiJIUzI1NiJ9..."}'
+```
+
+Response:
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiJ9..."
+}
+```
+
+**Logout**
+```bash
+curl -X POST http://localhost:8081/auth/logout \
+  -H "Cookie: token=eyJhbGciOiJIUzI1NiJ9..."
+```
 ```bash
 curl -X POST http://localhost:8081/auth/register \
   -H "Content-Type: application/json" \
@@ -127,10 +147,13 @@ src/main/java/com/example/auth/
 
 ## Security Features
 
-- BCrypt password hashing
-- JWT token authentication
-- Rate limiting on login endpoint (5 attempts per 60 seconds)
-- Input validation
+- **JWT with JTI Claims**: Every token includes a unique JWT ID (JTI) for secure token identification and revocation
+- **BCrypt Password Hashing**: Passwords securely hashed using BCrypt
+- **Token Blacklisting**: JTI-based blacklist on logout (36-byte UUID vs 500+ bytes full-token storage)
+- **Refresh Token Management**: Long-lived refresh tokens (7 days) enable token refresh without re-authentication
+- **Rate Limiting**: Login endpoint limited to 5 attempts per 60 seconds
+- **Input Validation**: Email and password validation on registration
+- **Server-Side Session Management**: Sessions tracked in Redis auth-cache
 
 ## Database Schema
 

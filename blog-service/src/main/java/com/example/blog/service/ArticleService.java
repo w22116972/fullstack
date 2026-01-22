@@ -26,6 +26,14 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.sql.SQLException;
 
+/**
+ * ArticleService provides business logic for managing articles in the blog system.
+ * <p>
+ * This service handles CRUD operations for articles, including listing, retrieving,
+ * creating, updating, and deleting articles. It enforces security rules for access control,
+ * supports caching for performance, and includes retry logic for database operations.
+ * Admin users can access all articles, while regular users can only access their own.
+ */
 @Slf4j
 @Service
 @Transactional(readOnly = true)
@@ -40,10 +48,39 @@ public class ArticleService {
     @Autowired
     private ArticleMapper articleMapper;
 
-    // Any authenticated user can list articles,
-    // with logic inside to filter based on role.
+    /**
+     * Retrieves a paginated list of article summaries.
+     * <p>
+     * - Admin users see all articles, optionally filtered by title.
+     * - Regular users see only their own articles, optionally filtered by title.
+     * - Supports retry logic for transient SQL errors.
+     *
+     * @param title optional title filter
+     * @param pageable pagination information
+     * @return a page of ArticleSummaryDto objects
+     */
     @PreAuthorize("isAuthenticated()")
-    @Retryable(retryFor = {SQLException.class}, maxAttempts = 3, backoff = @Backoff(delay = 100, multiplier = 2))
+    /**
+     * Retries on transient exceptions:
+     * - SQLException: covers most database connectivity and transient errors.
+     * - TransientDataAccessException: Spring's abstraction for temporary DB issues (e.g., deadlocks).
+     * - CannotAcquireLockException: for lock acquisition failures due to DB contention.
+     * - ConcurrencyFailureException: for optimistic/pessimistic locking failures.
+     * - SocketTimeoutException: for network timeouts to the DB.
+     * - QueryTimeoutException: for query execution timeouts.
+     */
+    @Retryable(
+        retryFor = {
+            SQLException.class,
+            org.springframework.dao.TransientDataAccessException.class,
+            org.springframework.dao.CannotAcquireLockException.class,
+            org.springframework.dao.ConcurrencyFailureException.class,
+            java.net.SocketTimeoutException.class,
+            org.springframework.dao.QueryTimeoutException.class
+        },
+        maxAttempts = 3,
+        backoff = @Backoff(delay = 100, multiplier = 2)
+    )
     public Page<ArticleSummaryDto> getAllArticles(String title, Pageable pageable) {
         User currentUser = getCurrentUser();
         boolean isAdmin = isAdmin(currentUser);
@@ -66,8 +103,39 @@ public class ArticleService {
         return articles.map(articleMapper::toSummaryDto);
     }
 
+    /**
+     * Retrieves a single article by its ID.
+     * <p>
+     * - Only admin users or the article's owner can access the article.
+     * - Uses caching to improve performance for repeated access.
+     * - Supports retry logic for transient SQL errors.
+     *
+     * @param id the ID of the article
+     * @return the ArticleDto for the requested article
+     * @throws ResourceNotFoundException if the article does not exist
+     */
     @PreAuthorize("hasRole('ADMIN') or @articleSecurity.isOwner(authentication, #id)")
-    @Retryable(retryFor = {SQLException.class}, maxAttempts = 3, backoff = @Backoff(delay = 100, multiplier = 2))
+    /**
+     * Retries on transient exceptions:
+     * - SQLException: covers most database connectivity and transient errors.
+     * - TransientDataAccessException: Spring's abstraction for temporary DB issues (e.g., deadlocks).
+     * - CannotAcquireLockException: for lock acquisition failures due to DB contention.
+     * - ConcurrencyFailureException: for optimistic/pessimistic locking failures.
+     * - SocketTimeoutException: for network timeouts to the DB.
+     * - QueryTimeoutException: for query execution timeouts.
+     */
+    @Retryable(
+        retryFor = {
+            SQLException.class,
+            org.springframework.dao.TransientDataAccessException.class,
+            org.springframework.dao.CannotAcquireLockException.class,
+            org.springframework.dao.ConcurrencyFailureException.class,
+            java.net.SocketTimeoutException.class,
+            org.springframework.dao.QueryTimeoutException.class
+        },
+        maxAttempts = 3,
+        backoff = @Backoff(delay = 100, multiplier = 2)
+    )
     @Cacheable(value = "articles", key = "#id")
     public ArticleDto getArticle(Long id) {
         Article article = articleRepository.findById(id)
@@ -76,6 +144,16 @@ public class ArticleService {
         return articleMapper.toDto(article);
     }
 
+    /**
+     * Creates a new article.
+     * <p>
+     * - Any authenticated user can create an article.
+     * - Sets the current user as the author.
+     * - Logs creation events for auditing.
+     *
+     * @param dto the ArticleDto containing article data
+     * @return the created ArticleDto
+     */
     @Transactional
     @PreAuthorize("isAuthenticated()") // Any authenticated user can create an article
     public ArticleDto createArticle(ArticleDto dto) {
@@ -93,6 +171,18 @@ public class ArticleService {
         return articleMapper.toDto(saved);
     }
 
+    /**
+     * Updates an existing article.
+     * <p>
+     * - Only admin users or the article's owner can update the article.
+     * - Updates title, content, tags, and publish status.
+     * - Logs update events for auditing.
+     *
+     * @param id the ID of the article to update
+     * @param dto the ArticleDto containing updated data
+     * @return the updated ArticleDto
+     * @throws ResourceNotFoundException if the article does not exist
+     */
     @Transactional
     @PreAuthorize("hasRole('ADMIN') or @articleSecurity.isOwner(authentication, #id)")
     public ArticleDto updateArticle(Long id, ArticleDto dto) {
@@ -110,6 +200,15 @@ public class ArticleService {
         return articleMapper.toDto(saved);
     }
 
+    /**
+     * Deletes an article by its ID.
+     * <p>
+     * - Only admin users or the article's owner can delete the article.
+     * - Evicts the article from cache after deletion.
+     * - Logs deletion events for auditing.
+     *
+     * @param id the ID of the article to delete
+     */
     @Transactional
     @PreAuthorize("hasRole('ADMIN') or @articleSecurity.isOwner(authentication, #id)")
     @CacheEvict(value = "articles", key = "#id")
@@ -126,7 +225,15 @@ public class ArticleService {
         articleRepository.delete(article);
     }
 
-    // Retained for internal logic of getAllArticles and createArticle
+    /**
+     * Retrieves the current authenticated user from the security context.
+     * <p>
+     * - Used internally for associating articles with users and filtering results.
+     * - Handles cases where principal may be a User or UserDetails.
+     *
+     * @return the current User
+     * @throws ResourceNotFoundException if the user cannot be found
+     */
     private User getCurrentUser() {
         Object principal = SecurityContextHolder.getContext().getAuthentication().getPrincipal();
         
@@ -140,7 +247,14 @@ public class ArticleService {
         return userRepository.findByEmail(email).orElseThrow(() -> new ResourceNotFoundException("User not found"));
     }
 
-    // Retained for internal logic of getAllArticles
+    /**
+     * Checks if the given user has the ADMIN role.
+     * <p>
+     * - Used internally for access control logic in article listing.
+     *
+     * @param user the User to check
+     * @return true if the user is an admin, false otherwise
+     */
     private boolean isAdmin(User user) {
         return Role.ADMIN.equals(user.getRole());
     }
